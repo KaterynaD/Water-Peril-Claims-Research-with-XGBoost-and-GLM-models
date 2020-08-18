@@ -1,0 +1,460 @@
+---
+title: "EDA Severity of Water peril claims in CovA. Visualization"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+dataset <- read.csv("C:\\Kate\\Research\\Property\\Data\\property_water_claims_non_cat_fs_v5.csv", header=TRUE)
+```
+
+Claim Partial Dependency XGB Classification dataset exported from a Python notebook
+```{r}
+pd_gamma_dataset <- read.csv("C:\\Kate\\Research\\Property\\Data\\EDA_Severity_Gamma_PartialDependency.csv", header=TRUE)
+pd_normal_dataset <- read.csv("C:\\Kate\\Research\\Property\\Data\\EDA _Severity_Normal_PartialDependency.csv", header=TRUE)
+```
+
+```{r}
+library(dplyr)
+library(funModeling)
+library(ggplot2)
+```
+
+```{r}
+colnames(dataset)
+```
+
+
+```{r}
+dataset <- dataset[dataset$cova_il_nc_water>0,]
+```
+
+## Quick Overview
+
+
+
+
+
+```{r}
+str(dataset)
+```
+
+```{r}
+summary(dataset)
+```
+
+## Visualization
+
+### Severity
+
+
+```{r}
+ggplot(dataset, aes(x = .data[['cova_il_nc_water']], color="red",fill="#56B4E9")) +
+  geom_histogram(bins=100) +
+  labs(x = 'cova_il_nc_water', y = 'Count', title = "Histogram of Losses (cova_il_nc_water)")+
+  scale_color_manual(values=c("red")) +  
+  scale_fill_manual(values=c("#56B4E9")) +  
+  theme(legend.position = "none")
+
+ggplot(dataset, aes(x = .data[['cova_il_nc_water']])) +
+  geom_density() + 
+  labs(x = 'cova_il_nc_water', y = 'Density', title = "Density of Losses (cova_il_nc_water)")
+
+  vec <- dataset$cova_il_nc_water
+  y <- quantile(vec[!is.na(vec)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+
+ggplot(dataset, aes(sample = .data[['cova_il_nc_water']], col='red')) + 
+  stat_qq() + 
+  geom_abline(slope = slope, intercept = int) +
+  theme(legend.position = "none") +
+  labs(y = 'cova_il_nc_water', title = "QQ Plot of Losses (cova_il_nc_water)")
+
+ggplot(dataset, aes(x = .data[['log_cova_il_nc_water']], color="red",fill="#56B4E9")) +
+  geom_histogram(bins=100) +
+  scale_color_manual(values=c("red")) +  
+  scale_fill_manual(values=c("#56B4E9")) + 
+  labs(x = 'log(cova_il_nc_water)', y = 'Count', title = "Histogram of Losses (log_cova_il_nc_water)")+
+  theme(legend.position = "none")
+
+ggplot(dataset, aes(x = .data[['log_cova_il_nc_water']])) +
+  geom_density() + 
+  labs(x = 'log(cova_il_nc_water)', y = 'Density', title = 'Density of Losses (log_cova_il_nc_water)')
+
+  vec <- dataset$log_cova_il_nc_water
+  y <- quantile(vec[!is.na(vec)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+
+ggplot(dataset, aes(sample = .data[['log_cova_il_nc_water']], col='red')) + 
+  stat_qq() + 
+  geom_abline(slope = slope, intercept = int) +
+  theme(legend.position = "none") +
+  labs(y = 'log(cova_il_nc_water)', title = 'QQ Plot of Losses (log_cova_il_nc_water)')
+
+
+
+```
+
+
+Looks like gamma distribution and log conversion is more close to normal.
+
+### Box Plots of categorical predictors and Losses
+```{r}
+plot_categorical <- function(col_name) {
+#dataset[[col_name]] <- as.factor(dataset[[col_name]])
+#ggplot(dataset, aes(x=.data[[col_name]], y=cova_il_nc_water, col=.data[[col_name]], fill=.data[[col_name]])) +
+#  geom_boxplot(notch=notch) +
+#  theme(legend.position = "none") +
+#  labs(x = col_name, title = paste("Box Plot of Losses and ", col_name))
+if ( col_name == 'roofcd_encd') {
+col_name_original <- 'roofcd'
+} 
+  else if ( col_name == 'usagetype_encd' ) {
+col_name_original <- 'usagetype'
+} 
+else if ( col_name == 'constructioncd_encd' ) {
+col_name_original <- 'constructioncd'
+} 
+  else if ( col_name == 'occupancy_encd' ) {
+col_name_original <- 'occupancycd'
+} 
+  else {
+  col_name_original <- col_name
+}
+  
+if (grepl('encd',col_name) | 
+    col_name =='fire_risk_model_score' | 
+    col_name =='customer_cnt_active_policies_binned' |
+    col_name =='cova_deductible' | 
+    col_name =='cova_limit' | 
+    col_name =='protectionclass' | 
+    col_name =='ordinanceorlawpct' | 
+    col_name =='numberoffamilies' | 
+    col_name =='waterded' | 
+    col_name =='units' | 
+    col_name =='sprinklersystem' |
+    col_name =='stories') {
+  XBreaks <- as.vector(unlist(unique(dataset[c(col_name)])))
+  XLabels <- as.vector(unlist(unique(dataset[c(col_name_original)]))) 
+} 
+else if (col_name =='pipe_froze_3_blk' | 
+col_name =='water_risk_3_blk' | 
+col_name =='ustructure_fail_3_blk' | 
+col_name =='water_risk_fre_3_blk' | 
+col_name =='waterh_fail_3_blk' | 
+col_name =='rep_cost_3_blk' | 
+col_name =='plumb_leak_3_blk' | 
+col_name =='appl_fail_3_blk' | 
+col_name =='fixture_leak_3_blk') {
+  XBreaks <- c(0,1,2,3,4,5)
+  XLabels <- c('Low', 'Elevated', 'Below Avg', 'Average', 'High', 'Highest')    
+}
+else {
+  XBreaks <- c(0,1)
+  XLabels <- c("No", "Yes")  
+
+}
+  
+pd_col <- pd_gamma_dataset[pd_gamma_dataset$feature == col_name,][c('value','pd')]
+colnames(pd_col) <- c(col_name,'pd')
+plotdata <- dataset %>%
+  group_by(.dots = col_name) %>%
+  dplyr::summarize(n = n(),
+         mean = mean(cova_il_nc_water),
+         sd = sd(cova_il_nc_water),
+         se = sd / sqrt(n) #,
+         #ci = qt(0.975, df = n - 1) * sd / sqrt(n)
+         )
+
+plotdata <- merge(plotdata,pd_col,by=col_name)  
+cols <- c('Mean Losses with standard error'='#f04546','Losses Partial Dependency'='#3591d1')
+p1 = ggplot(plotdata) +
+scale_fill_manual(values=cols) +
+scale_colour_manual(values=cols) +  
+geom_point(aes(x = .data[[col_name]], y = mean,group = 1,color='Mean Losses with standard error'), size = 3) +
+geom_line(aes(x = .data[[col_name]], y = mean,group = 1,color='Mean Losses with standard error')) +
+geom_errorbar(aes(x = .data[[col_name]], y = mean,group = 1, ymin = mean - se,ymax = mean + se,color='Mean Losses with standard error'),width = .1) +
+geom_point(aes(x = .data[[col_name]], y = pd,group = 1,color='Losses Partial Dependency'), size = 3) +  
+geom_line(aes(x = .data[[col_name]], y = pd,group = 1,color='Losses Partial Dependency')) +
+scale_x_continuous( breaks=XBreaks, labels= XLabels)   +
+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+p2 = ggplot(plotdata) +
+scale_fill_manual(values=cols) +
+scale_colour_manual(values=cols) +    
+geom_point(aes(x = .data[[col_name]], y = pd,group = 1,color='Losses Partial Dependency'), size = 3) +  
+geom_line(aes(x = .data[[col_name]], y = pd,group = 1,color='Losses Partial Dependency')) +
+scale_x_continuous( breaks=XBreaks, labels= XLabels)   +
+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+print(p1)
+print(p2)
+
+#----------------------
+pd_col <- pd_normal_dataset[pd_normal_dataset$feature == col_name,][c('value','pd')]
+if (nrow(pd_col)>0) {
+colnames(pd_col) <- c(col_name,'pd')
+plotdata <- dataset %>%
+  group_by(.dots = col_name) %>%
+  dplyr::summarize(n = n(),
+         mean = mean(log_cova_il_nc_water),
+         sd = sd(log_cova_il_nc_water),
+         se = sd / sqrt(n) #,
+         #ci = qt(0.975, df = n - 1) * sd / sqrt(n)
+         )
+
+plotdata <- merge(plotdata,pd_col,by=col_name)  
+
+cols <- c('Mean Losses (Log) with standard error'='#f04546','Losses (Log) Partial Dependency'='#3591d1')
+p1 = ggplot(plotdata) +
+scale_fill_manual(values=cols) +
+scale_colour_manual(values=cols) +    
+geom_point(aes(x = .data[[col_name]], y = mean,group = 1,color='Mean Losses (Log) with standard error'), size = 3) +
+geom_line(aes(x = .data[[col_name]], y = mean,group = 1,color='Mean Losses (Log) with standard error')) +
+geom_errorbar(aes(x = .data[[col_name]], y = mean,group = 1, ymin = mean - se,ymax = mean + se,color='Mean Losses (Log) with standard error'),width = .1) +
+geom_point(aes(x = .data[[col_name]], y = pd,group = 1,color='Losses (Log) Partial Dependency'), size = 3) +  
+geom_line(aes(x = .data[[col_name]], y = pd,group = 1,color='Losses (Log) Partial Dependency')) +
+scale_x_continuous( breaks=XBreaks, labels= XLabels)   +
+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+p2 = ggplot(plotdata) +
+scale_fill_manual(values=cols) +
+scale_colour_manual(values=cols) +    
+geom_point(aes(x = .data[[col_name]], y = pd,group = 1,color='Losses (Log) Partial Dependency'), size = 3) +  
+geom_line(aes(x = .data[[col_name]], y = pd,group = 1,color='Losses (Log) Partial Dependency')) +
+scale_x_continuous( breaks=XBreaks, labels= XLabels)   +
+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+print(p1)
+print(p2)
+}
+}
+```
+
+
+
+
+```{r}
+plot_categorical('functionalreplacementcost')
+```
+```{r}
+plot_categorical('numberoffamilies')
+```
+```{r}
+plot_categorical('units')
+```
+```{r}
+plot_categorical('stories')
+```
+```{r,fig.width=10}
+plot_categorical('cova_deductible')
+```
+```{r}
+plot_categorical('replacementvalueind')
+```
+```{r}
+plot_categorical('neighborhoodcrimewatchind')
+```
+```{r}
+plot_categorical('fire_risk_model_score')
+```
+
+```{r}
+ggplot(data=dataset, mapping = aes(x=water_risk_sev_3_blk, y=cova_il_nc_water, color=-cova_il_nc_water)) +
+  geom_point() +
+  labs(title = "Losses vs water_risk_sev_3_blk")
+```
+
+The higest losses are between 100 and 200 water_risk_sev_3_blk. We may have not enough data for higher numbers of water_risk_sev_3_blk
+
+```{r}
+plot_categorical('burglaryalarmtype')
+```
+```{r}
+plot_categorical('deadboltind')
+```
+```{r}
+plot_categorical('waterh_fail_3_blk')
+```
+```{r}
+plot_categorical('safeguardplusind')
+```
+```{r}
+plot_categorical('equipmentbreakdown')
+```
+```{r}
+plot_categorical('cova_limit')
+```
+
+
+```{r}
+ggplot(data=dataset, mapping = aes(x=water_risk_3_blk, y=cova_il_nc_water, color=-cova_il_nc_water)) +
+  geom_point() +
+  labs(title = "Losses vs water_risk_3_blk")
+```
+There are more higher losses  around 250 water_risk_3_blk
+
+```{r}
+plot_categorical('usagetype_encd')
+```
+```{r}
+plot_categorical('multipolicyindumbrella')
+```
+```{r}
+plot_categorical('constructioncd_encd')
+```
+```{r}
+plot_categorical('replacementcostdwellingind')
+```
+```{r}
+plot_categorical('roofcd_encd')
+```
+```{r}
+plot_categorical('gatedcommunityind')
+```
+```{r}
+plot_categorical('homegardcreditind')
+```
+```{r}
+plot_categorical('ustructure_fail_3_blk')
+```
+```{r}
+ggplot(data=dataset, mapping = aes(x=water_risk_fre_3_blk, y=cova_il_nc_water, color=-cova_il_nc_water)) +
+  geom_point() +
+  labs(title = "Losses vs water_risk_fre_3_blk")
+```
+
+
+
+```{r}
+plot_categorical('ecy')
+```
+```{r}
+ggplot(data=dataset, mapping = aes(x=ecy, y=cova_il_nc_water, color=-cova_il_nc_water)) +
+  geom_point() +
+  labs(title = "Losses vs ecy")
+```
+
+```{r}
+plot_categorical('appl_fail_3_blk')
+```
+```{r}
+plot_categorical('pipe_froze_3_blk')
+```
+```{r}
+plot_categorical('firealarmtype')
+```
+```{r}
+plot_categorical('fixture_leak_3_blk')
+```
+```{r}
+plot_categorical('sqft')
+```
+
+```{r}
+ggplot(data=dataset, mapping = aes(x=sqft, y=cova_il_nc_water, color=-cova_il_nc_water)) +
+  geom_point() +
+  labs(title = "Losses vs sqft")
+```
+Severity is higher in larger properties
+
+```{r}
+plot_categorical('yearbuilt')
+```
+
+```{r}
+ggplot(data=dataset, mapping = aes(x=yearbuilt, y=cova_il_nc_water, color=-cova_il_nc_water)) +
+  geom_point() +
+  labs(title = "Losses vs YearBuilt")
+```
+
+Severity is higher in newer properties
+
+```{r}
+plot_categorical('customer_cnt_active_policies_binned')
+```
+```{r}
+ggplot(data=dataset, mapping = aes(x=customer_cnt_active_policies_binned, y=cova_il_nc_water, color=-cova_il_nc_water)) +
+  geom_point() +
+  labs(title = "Losses vs customer_cnt_active_policies_binned")
+```
+
+
+
+```{r}
+plot_categorical('protectionclass')
+```
+```{r}
+plot_categorical('multipolicyind')
+```
+```{r}
+plot_categorical('rep_cost_3_blk')
+```
+```{r}
+plot_categorical('plumb_leak_3_blk')
+```
+```{r}
+plot_categorical('rentersinsurance')
+```
+```{r}
+plot_categorical('sprinklersystem')
+```
+```{r}
+plot_categorical('kitchenfireextinguisherind')
+```
+```{r}
+plot_categorical('poolind')
+```
+```{r}
+plot_categorical('landlordind')
+```
+```{r}
+plot_categorical('occupancy_encd')
+```
+```{r}
+plot_categorical('ordinanceorlawpct')
+```
+```{r}
+plot_categorical('waterded')
+```
+```{r}
+plot_categorical('serviceline')
+```
+```{r}
+plot_categorical('propertymanager')
+```
+```{r}
+plot_categorical('earthquakeumbrellaind')
+```
+
+
+
+
+
+
+
+
+### Misc
+
+
+
+```{r}
+ggplot(data=dataset, mapping = aes(x=yearbuilt, y=cova_il_nc_water, color=roofcd)) +
+  geom_point() +
+  labs(title = "Losses vs YearBuilt and Roofcd Limit")
+```
+
+
+
+```{r}
+ggplot(data=dataset, mapping = aes(x=sqft, y=cova_il_nc_water, color=-cova_limit)) +
+  geom_point() +
+  labs(title = "Losses vs Sqft and CovA Limit")
+```

@@ -1,0 +1,317 @@
+---
+title: "EDA Frequncy of Water peril claims in CovA. Distribution"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+dataset <- read.csv("C:\\Kate\\Research\\Property\\Data\\property_water_claims_non_cat_fs_v5.csv", header=TRUE)
+```
+
+
+
+```{r}
+library(vcd)
+library(ggplot2)
+library(fitdistrplus)
+```
+
+```{r}
+colnames(dataset)
+```
+
+## Quick Overview
+
+
+
+
+
+```{r}
+str(dataset)
+```
+
+
+```{r}
+summary(dataset)
+```
+
+## Number of Claims - Poisson Distribution
+
+We can use goodfit() from vcd package. 
+H0: The process is a Poisson process.
+
+```{r}
+gf = goodfit(dataset$cova_ic_nc_water,type= "poisson",method= "ML")
+summary(gf)
+```
+
+Plot
+
+```{r}
+plot(gf,main="Number of Water Claims data vs Poisson distribution")
+```
+
+P-Value
+
+```{r}
+gf.summary = capture.output(summary(gf))[[5]]
+pvalue = unlist(strsplit(gf.summary, split = " "))
+pvalue = as.numeric(pvalue[length(pvalue)]) 
+pvalue
+```
+
+P-Value is less then 0.05 and we can reject H0
+
+
+It is not a Poisson distribution
+
+## Number of Claims - Negative Binomial Distribution
+
+
+```{r}
+gf = goodfit(dataset$cova_ic_nc_water,type= "nbinomial",method= "ML")
+summary(gf)
+```
+
+```{r}
+plot(gf,main="Number of Water Claims data vs Negative Binomial distribution")
+```
+
+
+```{r}
+gf.summary = capture.output(summary(gf))[[5]]
+pvalue = unlist(strsplit(gf.summary, split = " "))
+pvalue = as.numeric(pvalue[length(pvalue)]) 
+pvalue
+```
+
+P-Value is larger then 0.05 and we can not reject H0 
+The distribution is closer to negative binomial
+
+##Incurred Losses
+
+```{r}
+data <- read.csv("C:\\Kate\\Research\\Property\\Data\\property_water_claims_non_cat_fs_v5.csv", header=TRUE)
+```
+
+
+
+Positive Losses only
+```{r}
+dataset <- data[data$cova_il_nc_water>=100,]
+```
+
+
+
+And removing long tail of large losses which is better to Gamma distribution but worse for normal log of losses
+```{r}
+dataset <- dataset[dataset$cova_il_nc_water<quantile(dataset$cova_il_nc_water, 0.95),]
+```
+
+
+
+```{r}
+ggplot(dataset, aes(x = .data[['cova_il_nc_water']])) +
+  geom_histogram(bins=100) +
+  labs(x = 'cova_il_nc_water', y = 'Count', title = paste("Histogram of", 'cova_il_nc_water'))+
+  theme_light()
+
+ggplot(dataset, aes(x = .data[['cova_il_nc_water']])) +
+  geom_density() + 
+  labs(x = 'cova_il_nc_water', y = 'Density', title = paste("Density of", 'cova_il_nc_water'))
+
+  vec <- dataset$cova_il_nc_water
+  y <- quantile(vec[!is.na(vec)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+
+ggplot(dataset, aes(sample = .data[['cova_il_nc_water']], col='red')) + 
+  stat_qq() + 
+  geom_abline(slope = slope, intercept = int) +
+  theme(legend.position = "none") +
+  labs(y = 'cova_il_nc_water', title = paste("QQ Plot of", 'cova_il_nc_water'))
+
+ggplot(dataset, aes(x = .data[['log_cova_il_nc_water']])) +
+  geom_histogram(bins=100) +
+  labs(x = 'log(cova_il_nc_water)', y = 'Count', title = paste("Histogram of log ", 'cova_il_nc_water'))+
+  theme_light()
+
+ggplot(dataset, aes(x = .data[['log_cova_il_nc_water']])) +
+  geom_density() + 
+  labs(x = 'log(cova_il_nc_water)', y = 'Density', title = 'Density of log(cova_il_nc_water)')
+
+  vec <- dataset$log_cova_il_nc_water
+  y <- quantile(vec[!is.na(vec)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+
+ggplot(dataset, aes(sample = .data[['log_cova_il_nc_water']], col='red')) + 
+  stat_qq() + 
+  geom_abline(slope = slope, intercept = int) +
+  theme(legend.position = "none") +
+  labs(y = 'log(cova_il_nc_water)', title = 'QQ Plot of log(cova_il_nc_water)')
+```
+
+### Incurred Losses - Gamma Distribution
+
+https://stackoverflow.com/questions/45536234/how-would-you-fit-a-gamma-distribution-to-a-data-in-r
+https://www.r-bloggers.com/goodness-of-fit-test-in-r/
+
+
+
+
+
+
+```{r}
+plot(dataset$cova_il_nc_water, pch=20)
+```
+
+```{r}
+plotdist(dataset$cova_il_nc_water, histo = TRUE, demp = TRUE)
+```
+
+```{r}
+descdist(dataset$cova_il_nc_water, discrete=FALSE, boot=500)
+```
+Scaling is needed to preven "Error in fitdist(dataset$cova_il_nc_water/10, "gamma", method = "mle") : the function mle failed to estimate the parameters, with the error code 100" 
+
+https://stackoverflow.com/questions/53557022/error-code-100-fitting-exp-distribution-using-fitdist-in-r
+
+It looks like some numerical stability problem with the underlying algorithm. It hits something indistinguishable from infinity.
+
+```{r}
+fit_w  <- fitdist(dataset$cova_il_nc_water/100, "weibull", method="mle")
+fit_g  <- fitdist(dataset$cova_il_nc_water/100, "gamma", method="mle")
+fit_ln <- fitdist(dataset$cova_il_nc_water/100, "lnorm", method="mle")
+```
+```{r}
+summary(fit_w)
+```
+```{r}
+summary(fit_g)
+```
+```{r}
+summary(fit_ln)
+```
+
+```{r}
+plot.legend <- c("Weibull", "gamma", "lognormal")
+denscomp(list(fit_w,  fit_g, fit_ln), legendtext = plot.legend)
+cdfcomp (list(fit_w,  fit_g, fit_ln), legendtext = plot.legend)
+qqcomp  (list(fit_w,  fit_g, fit_ln), legendtext = plot.legend)
+ppcomp  (list(fit_w,  fit_g, fit_ln), legendtext = plot.legend)
+```
+Gamma and weibull are close to each other. The observed distribution is not good for any. Well, the best from worse is Gamma
+
+
+#### Kolmogorov-Smirnov does not work
+```{r}
+m <- mean(dataset$cova_il_nc_water)
+v <- var(dataset$cova_il_nc_water)
+
+print(m)
+print(v)
+
+scale <- v/m
+shape <- m*m/v
+
+print(shape)
+print(1/scale)
+```
+
+Shape = 1.024066
+Scale = 35519.68
+
+Kolmogorov-Smirnov is simple nonparametric test for one dimensional probability distribution. Same as Cramer von Mises test, it compares empirical distribution with reference probability. 
+
+
+```{r}
+num_of_samples = 10000
+y <- rgamma(num_of_samples, shape = shape, scale = 1/scale)
+ks.test(dataset$cova_il_nc_water, y)
+```
+
+### Log of Incurred Losses - Normal Distribution
+
+
+```{r}
+dataset <- data[data$cova_il_nc_water>100,]
+```
+
+```{r}
+ggplot(dataset, aes(x = .data[['cova_il_nc_water']])) +
+  geom_histogram(bins=100) +
+  labs(x = 'cova_il_nc_water', y = 'Count', title = paste("Histogram of", 'cova_il_nc_water'))+
+  theme_light()
+
+ggplot(dataset, aes(x = .data[['cova_il_nc_water']])) +
+  geom_density() + 
+  labs(x = 'cova_il_nc_water', y = 'Density', title = paste("Density of", 'cova_il_nc_water'))
+
+  vec <- dataset$cova_il_nc_water
+  y <- quantile(vec[!is.na(vec)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+
+ggplot(dataset, aes(sample = .data[['cova_il_nc_water']], col='red')) + 
+  stat_qq() + 
+  geom_abline(slope = slope, intercept = int) +
+  theme(legend.position = "none") +
+  labs(y = 'cova_il_nc_water', title = paste("QQ Plot of", 'cova_il_nc_water'))
+
+ggplot(dataset, aes(x = .data[['log_cova_il_nc_water']])) +
+  geom_histogram(bins=100) +
+  labs(x = 'log(cova_il_nc_water)', y = 'Count', title = paste("Histogram of log ", 'cova_il_nc_water'))+
+  theme_light()
+
+ggplot(dataset, aes(x = .data[['log_cova_il_nc_water']])) +
+  geom_density() + 
+  labs(x = 'log(cova_il_nc_water)', y = 'Density', title = 'Density of log(cova_il_nc_water)')
+
+  vec <- dataset$log_cova_il_nc_water
+  y <- quantile(vec[!is.na(vec)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+
+ggplot(dataset, aes(sample = .data[['log_cova_il_nc_water']], col='red')) + 
+  stat_qq() + 
+  geom_abline(slope = slope, intercept = int) +
+  theme(legend.position = "none") +
+  labs(y = 'log(cova_il_nc_water)', title = 'QQ Plot of log(cova_il_nc_water)')
+```
+
+#### Shapiro test
+
+
+```{r}
+shapiro.test(dataset[sample(nrow(dataset), 5000), 'log_cova_il_nc_water'])
+```
+The p-value > 0.05 implying that the distribution of the data are not significantly different from normal distribution. In other words, we can NOT assume the normality.
+
+```{r}
+plot(dataset$log_cova_il_nc_water, pch=20)
+```
+```{r}
+plotdist(dataset$log_cova_il_nc_water, histo = TRUE, demp = TRUE)
+```
+```{r}
+descdist(dataset$log_cova_il_nc_water, discrete=FALSE, boot=500)
+```
+
+```{r}
+fit_n  <- fitdist(dataset$log_cova_il_nc_water, "norm", method="mle")
+```
+```{r}
+summary(fit_n)
+```
+```{r}
+plot.legend <- c("Normal")
+denscomp(list(fit_n), legendtext = plot.legend)
+cdfcomp (list(fit_n), legendtext = plot.legend)
+```
+

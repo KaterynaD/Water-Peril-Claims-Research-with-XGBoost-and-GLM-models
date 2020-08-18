@@ -1,0 +1,534 @@
+---
+title: "EDA Frequncy of Water peril claims in CovA. Visualization"
+output:
+  html_document:
+    df_print: paged
+---
+
+Data
+```{r}
+dataset <- read.csv("C:\\Kate\\Research\\Property\\Data\\property_water_claims_non_cat_fs_v5.csv", header=TRUE)
+```
+
+
+
+
+Claim Partial Dependency XGB Classification dataset exported from a Python notebook
+```{r}
+pd_dataset <- read.csv("C:\\Kate\\Research\\Property\\Data\\EDA_PartialDependency.csv", header=TRUE)
+```
+
+```{r}
+library(funModeling)
+library(ggplot2)
+```
+
+```{r}
+colnames(dataset)
+```
+
+## Quick Overview
+
+
+```{r}
+#dataset <- dataset[,all]
+```
+
+
+
+```{r}
+str(dataset)
+```
+
+```{r}
+summary(dataset)
+```
+
+## Visualization
+
+### Number of claims
+
+
+
+```{r}
+dataset$cova_ic_nc_water_color <- as.factor(dataset$cova_ic_nc_water)
+ggplot(dataset, aes(x = cova_ic_nc_water, fill=cova_ic_nc_water_color)) +
+     geom_bar() +
+     labs(x = 'Number of Claims', y = 'Count', title = 'Histogram of Number of Claims') +
+     scale_fill_manual("legend", values = c("0" = "#56B4E9", "1" = "red", "2" = "red", "3" = "red")) + 
+     geom_text(stat='count', aes(label=..count..), vjust=1)
+```
+
+
+Since the cases when there are more then 1 claim per exposure are very rare and, I create a new logical attribute HasClaim with values 1 or 0. It can be used in logistic regression but I use it visualize if there is any visual dependency between predictors and claims. 
+
+```{r}
+dataset$hasclaim <- as.factor(dataset$hasclaim)
+```
+
+
+```{r}
+
+ggplot(dataset, aes(x = hasclaim, fill=hasclaim)) +
+     geom_bar() +
+     scale_fill_manual("legend", values = c("0" = "#56B4E9", "1" = "red")) + 
+     labs(x = 'Adjusted Number of Claims', y = 'Count', title = 'Adjusted Histogram of Number of Claims') +
+geom_text(stat='count', aes(label=..count..), vjust=1)
+```
+
+
+There is cery low percent of water related claims: 0.6%
+
+
+###Predictors
+
+(the order is from XGB Classification feature importance)
+
+
+```{r}
+
+ratio <- nrow(dataset)
+```
+
+```{r}
+#grid for multiplots
+multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
+  require(grid)
+
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  if (is.null(layout)) {
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+  if (numPlots == 1) {
+    print(plots[[1]])
+
+  } else {
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    for (i in 1:numPlots) {
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+```
+
+```{r}
+#continuous attributes
+plot_continuous <- function (col_name) {
+  p1 <- ggplot(dataset, aes(x = .data[[col_name]], fill=hasclaim)) +
+  geom_histogram(bins=100) +
+  scale_fill_manual(breaks = c("0","1"), 
+                       values=c("#56B4E9","red")) +   
+    
+  labs(x = col_name, y = 'Count', title = paste("Histogram of", col_name))
+
+ #p2 <- ggplot(dataset, aes(x = .data[[col_name]])) +
+  #geom_density() + 
+ # labs(x = col_name, y = 'Density', title = paste("Density of", col_name))
+  
+  pd_col <- pd_dataset[pd_dataset$feature == col_name,][c('value','pd')]
+  
+  p2 <- ggplot(pd_col, aes(x = value, y = pd)) +
+  geom_line(aes(color="darkred")) + 
+ labs(x = col_name, y = 'pd', title = paste("Claim Partial Dependency of", col_name))
+
+  p3 <- ggplot(dataset, aes(x=hasclaim, y=.data[[col_name]], col=hasclaim, fill=hasclaim)) +
+  geom_boxplot(notch = TRUE) +
+  scale_fill_manual(breaks = c("0","1"), 
+                      values=c("#56B4E9","red")) +   
+  theme(legend.position = "none") +
+  labs(y = col_name, title = paste("Box Plot of", col_name, "with hasclaim"))
+
+  vec <- dataset[[col_name]]
+  y <- quantile(vec[!is.na(vec)], c(0.25, 0.75))
+  x <- qnorm(c(0.25, 0.75))
+  slope <- diff(y)/diff(x)
+  int <- y[1L] - slope * x[1L]
+
+  p4 <- ggplot(dataset, aes(sample = .data[[col_name]], col='red')) + 
+  stat_qq() + 
+  geom_abline(slope = slope, intercept = int) +
+  theme(legend.position = "none") +
+  labs(y = col_name, title = paste("QQ Plot of", col_name))
+
+  
+  multiplot(p1,p2,p3,p4, cols=2)
+}
+```
+
+
+
+```{r}
+#categorical attributes - multiplot does not work for fun modeling
+plot_categorical <- function(col_name) {
+  
+  if ( col_name == 'roofcd_encd') {
+col_name_original <- 'roofcd'
+} 
+  else if ( col_name == 'usagetype_encd' ) {
+col_name_original <- 'usagetype'
+} 
+else if ( col_name == 'constructioncd_encd' ) {
+col_name_original <- 'constructioncd'
+} 
+  else if ( col_name == 'occupancy_encd' ) {
+col_name_original <- 'occupancycd'
+} 
+  else {
+  col_name_original <- col_name
+}
+  
+  
+pd_col <- pd_dataset[pd_dataset$feature == col_name,][c('value','pd')]
+colnames(pd_col) <- c(col_name,'pd')
+
+df <- merge(dataset[c(col_name,'hasclaim')],pd_col,by=col_name)  
+
+
+
+if (grepl('encd',col_name) | 
+    col_name =='fire_risk_model_score' | 
+    col_name =='customer_cnt_active_policies_binned' |
+    col_name =='cova_deductible' | 
+    col_name =='cova_limit' | 
+    col_name =='protectionclass' | 
+    col_name =='ordinanceorlawpct' | 
+    col_name =='numberoffamilies' | 
+    col_name =='waterded' | 
+    col_name =='units' | 
+    col_name =='stories') {
+  XBreaks <- as.vector(unlist(unique(dataset[c(col_name)])))
+  XLabels <- as.vector(unlist(unique(dataset[c(col_name_original)]))) 
+} 
+else if (col_name =='pipe_froze_3_blk' | 
+col_name =='water_risk_3_blk' | 
+col_name =='ustructure_fail_3_blk' | 
+col_name =='water_risk_fre_3_blk' | 
+col_name =='waterh_fail_3_blk' | 
+col_name =='rep_cost_3_blk' | 
+col_name =='plumb_leak_3_blk' | 
+col_name =='appl_fail_3_blk' | 
+col_name =='fixture_leak_3_blk') {
+  XBreaks <- c(0,1,2,3,4,5)
+  XLabels <- c('Low', 'Elevated', 'Below Avg', 'Average', 'High', 'Highest')    
+}
+else {
+  XBreaks <- c(0,1)
+  XLabels <- c("No", "Yes")  
+
+}
+
+cols <- c('PD'='#f04546')
+p1 = ggplot(df) +
+     geom_bar(aes(x = .data[[col_name]], fill=hasclaim)) +
+     scale_fill_manual(breaks = c("0","1"), 
+                       values=c("#56B4E9","red")) +   
+     geom_line(aes(x = .data[[col_name]], y=(pd)*ratio*100,color='PD')) +
+     scale_y_continuous(sec.axis = sec_axis(~./ratio, name = "PD")) +
+     scale_x_continuous( breaks=XBreaks, labels= XLabels) +
+     labs(x = col_name, y = 'Count', title = paste("Histogram and claims partial dependency of", col_name_original)) +
+     theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+if (length(unique(dataset[[col_name_original]]))  <= 6) 
+{p2 = bayesian_plot(data=dataset, input=col_name_original, target='hasclaim')}
+
+p3 = cross_plot(data=dataset, str_input=col_name_original, str_target='hasclaim',plot_type='percentual')
+
+
+if (length(unique(dataset[[col_name_original]]))  <= 6) {
+  print(p1)
+  print(p2)
+  print(p3)
+  }
+else {  
+  print(p1)
+  print(p3)
+  }
+  
+}
+
+```
+
+
+
+
+
+
+
+```{r} 
+plot_categorical('usagetype_encd')  
+```
+
+The more property is used, the higher claims rate.
+
+
+```{r} 
+plot_categorical('customer_cnt_active_policies_binned')  
+```
+
+If the same customer has more then 10 active policies, the claim rate is lower.
+
+
+
+```{r} 
+plot_continuous('ecy')  
+```
+
+
+The longer the exposure, the higher claim rate.
+
+```{r,fig.width=10}
+plot_categorical('cova_deductible')  
+```
+
+
+The claim rate is higher in low deductible policies.
+
+
+
+```{r} 
+plot_continuous('yearbuilt')  
+```
+
+
+More claims are in newer houses but not in modern.
+
+```{r} 
+plot_categorical('landlordind')  
+```
+
+This is a discount based on the number of policies for the same customer. It's correlated with customer_cnt_active_policies_binned and has the same claim dependency but without details: more policies less claims rate.
+
+```{r} 
+plot_categorical('pipe_froze_3_blk')  
+```
+
+Everything indicates we have more claims in the lowest category. It may makes sense for california, where we have most insured properties in an area where low tempretures are rare but not useful for further analysis. 
+
+
+```{r} 
+plot_categorical('roofcd_encd')  
+```
+
+
+Visible higher claim rate in WOOD, TILE, and maybe, TAR and OTHER
+
+
+```{r} 
+plot_continuous('sqft')  
+```
+
+The higher sqft, the higher claim rate till some limit, where it is not increased.
+
+
+```{r} 
+plot_categorical('firealarmtype')  
+```
+
+
+Firealarmtype is not directly related to water claims. There are some evidence there is a dependency but, probably, due to correlations with other attributes. Adding the predictor to a model increase overfitting.
+
+
+
+```{r} 
+plot_categorical('stories')  
+```
+
+
+There is a clear evidence, the 2-stories properties have more claims. However, the attributes is broken in the database. There are a lot of empty or high values (known issues).  
+
+
+```{r} 
+plot_categorical('equipmentbreakdown')  
+```
+
+
+Equipmentbreakdown is not directly related to water claims. There are some evidence there is a dependency but, probably, due to correlations with other attributes. Adding the predictor to a model increase overfitting.
+
+
+```{r} 
+plot_categorical('cova_limit')  
+```
+
+More claims from more expensive properties.
+
+```{r} 
+plot_categorical('replacementvalueind')  
+```
+
+Replacementvalueind is not directly related to water claims. There are some evidence there is a dependency but, probably, due to correlations with other attributes. 
+
+
+```{r} 
+plot_categorical('propertymanager')  
+```
+
+Even if PropertyManager decrease number of claims according to visual analysis it is not clear from the partial dependency. Probably due to correlations.
+
+
+```{r} 
+plot_categorical('multipolicyind')  
+```
+On the one hand, there are more claims in "Yes" multipolicyind category, on the other, it's different in the partial dependency. The predictor is not very significant in GLM
+
+
+```{r} 
+plot_categorical('poolind')  
+```
+More claims in properties with pools according to the charts and baysian comparizon but it's different in the partial dependency.
+GLM results are more close to the visual and significant. The difference between "No" and "Yes" categories is very small and can be due to errors.
+
+
+
+```{r} 
+plot_categorical('replacementcostdwellingind')  
+```
+
+
+Replacementcostdwellingind is not directly related to water claims. There are some evidence there is a dependency but, probably, due to correlations with other attributes. There is almost no difference between categories in the partial dependency.
+
+
+```{r} 
+plot_categorical('safeguardplusind')  
+```
+
+Safeguardplusind is not directly related to water claims. There are some evidence there is a dependency but, probably, due to correlations with other attributes. There is almost no difference between categories in the partial dependency and charts.
+
+```{r} 
+plot_categorical('ustructure_fail_3_blk')  
+```
+There are slight increase in the "Below Average" category partial dependency but not in visual.
+
+```{r} 
+plot_continuous('water_risk_3_blk')  
+```
+The higher the score, the more claims according to box-plots and partial dependency.
+
+The rest of the predictors are not very important or directly related to water claims.
+
+```{r} 
+plot_categorical('serviceline')  
+```
+```{r} 
+plot_categorical('protectionclass')  
+```
+```{r} 
+plot_continuous('water_risk_fre_3_blk')  
+```
+```{r} 
+plot_categorical('rep_cost_3_blk')  
+```
+```{r} 
+plot_categorical('waterh_fail_3_blk')  
+```
+```{r} 
+plot_categorical('deadboltind')  
+```
+```{r} 
+plot_categorical('homegardcreditind')  
+```
+```{r} 
+plot_categorical('ordinanceorlawpct')  
+```
+```{r} 
+plot_categorical('occupancy_encd')  
+```
+```{r} 
+plot_categorical('burglaryalarmtype')  
+```
+```{r} 
+plot_categorical('waterded')  
+```
+```{r} 
+plot_categorical('plumb_leak_3_blk')  
+```
+```{r} 
+plot_categorical('appl_fail_3_blk')  
+```
+```{r} 
+plot_categorical('numberoffamilies')  
+```
+```{r} 
+plot_categorical('units')  
+```
+```{r} 
+plot_continuous('water_risk_sev_3_blk')  
+```
+```{r} 
+plot_categorical('multipolicyindumbrella')  
+```
+```{r} 
+plot_categorical('kitchenfireextinguisherind')  
+```
+```{r} 
+plot_categorical('fixture_leak_3_blk')  
+```
+```{r} 
+plot_categorical('constructioncd_encd')  
+```
+```{r} 
+plot_categorical('fire_risk_model_score')  
+```
+```{r} 
+plot_categorical('gatedcommunityind')  
+```
+```{r} 
+plot_categorical('sprinklersystem')  
+```
+```{r} 
+plot_categorical('neighborhoodcrimewatchind')  
+```
+```{r} 
+plot_categorical('rentersinsurance')  
+```
+```{r} 
+plot_categorical('earthquakeumbrellaind')  
+```
+```{r} 
+plot_categorical('functionalreplacementcost')  
+```
+
+
+
+
+### Misc visualization
+
+
+```{r}
+ggplot(data=dataset, mapping = aes(x=yearbuilt, y=sqft, color=hasclaim)) +
+  geom_point() +
+  scale_color_manual(breaks = c("0","1"), 
+                       values=c("#56B4E9","red")) + 
+  scale_fill_manual(breaks = c("0","1"), 
+                       values=c("#56B4E9","red")) +
+  labs(title = "Sqft vs YearBuilt and HasClaim")
+```
+
+We have more policies between 1945 and 2010 with more claims in this period.
+
+
+```{r}
+ggplot(dataset, aes(x=roofcd, y=yearbuilt, col=hasclaim, fill=hasclaim)) +
+  geom_boxplot(notch = TRUE) +
+#scale_color_manual(breaks = c("0","1"), 
+#                 values=c("#56B4E9","red")) + 
+scale_fill_manual(breaks = c("0","1"), 
+                       values=c("#56B4E9","red")) +
+  theme(legend.position = "none") +
+  labs(x = "Roof Code", title = paste("Box Plot of YearBuilt vs Roof Code"))
+```
+
+
+Tile and wood is used in more modern houses with lower rate of claims. TAR is used in older.
+COMPO, TAR and OTHER have more claims then other

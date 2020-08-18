@@ -1,0 +1,186 @@
+---
+title: "EDA Water peril claims in CovA. Correlation"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+dataset <- read.csv("C:\\Kate\\Research\\Property\\Data\\property_water_claims_non_cat_fs_v5.csv", header=TRUE)
+```
+
+
+
+```{r}
+library(GoodmanKruskal)
+library(PerformanceAnalytics)
+library(corrplot)
+library(weights)
+library(ggplot2)
+```
+
+# EDA Water peril claims in CovA. Correlation
+
+There is no correlation observed between pedictors and response variable. However, correlation between predictors can explain why visually we can see some not expecting dependency between some predictors and response variables.
+
+Also strong correlated predictors should not be used together in some models.
+
+The code below builds for subset of predictors:
+
+1. Pearson correlation coefficients matrix
+2. Pearson correlation coefficients matrix with crossed insignificant pairs (sig.level = 0.01)
+3. GoodmanKruskal correlation coefficients matrix
+
+## GoodmanKruskal
+
+https://cran.r-project.org/web/packages/GoodmanKruskal/vignettes/GoodmanKruskal.html
+
+It is desirable to measure the association between numerical and categorical variable types. A GoodmanKruskal package function converts numerical variables into categorical ones, which may then be used as a basis for association analysis between mixed variable types.
+
+This approach is somewhat experimental: there is loss of information in grouping a numerical variable into a categorical variable, but neither the extent of this information loss nor its impact are clear. Also, it is not obvious how many groups should be chosen, or how the results are influenced by different grouping strategies
+
+## Pearson
+
+It requires only numeric attributes. If it's an ordered factor variable, it's converted to integer. For non-ordered factor variables I set an integer value, highest at the most used. The less it's used in the original data, the less the numerical representation. They have _encd suffix in teh dataset.
+
+Weighted Pearson correlation repeats the same pattern as not weighted
+
+## Spearman correlation
+
+Spearman correlation repeats the same pattern as Pearson
+
+
+```{r}
+plot_correlation <- function (v_set) {
+  res <- rcorr(as.matrix(dataset[v_set]),type="pearson")
+r <- round(res$r, 2)
+p <- round(res$P, 2)
+corrplot(r, method = "number")
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(r, method = "color", col = col(200),  
+         type = "upper", order = "hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col = "darkblue", tl.srt = 45, #Text label color and rotation
+         # Combine with significance level
+         p.mat = p, sig.level = 0.01, 
+         # 
+         diag = FALSE 
+         )
+datacarFrame<- subset(dataset, select = v_set)
+GKmatrix<- GKtauDataframe(datacarFrame)
+plot(GKmatrix, corrColors = "blue")
+}
+```
+
+
+##Property related products Configuration
+
+- CovA Limit and sqft
+- CovA Limit and CovA Deductible
+- Yearbuilt and sqft
+- Replacementvalueind and usagetype (GoodmanKruskal)
+
+```{r,fig.width=8, fig.height=8}
+v_set<- c(
+'yearbuilt',
+'sqft',
+'roofcd_encd',
+'cova_deductible',
+'cova_limit',
+'usagetype_encd',
+'stories',
+'constructioncd_encd',
+'replacementvalueind'
+)
+plot_correlation(v_set)
+```
+
+
+
+##Landlord (?) Product Configuration
+
+- LandLordInd discount and related number of other policies for teh same customer (customer_cnt_active_policies_binned)
+- LandLordInd and Replacementcostdwellingind and this can explain why we see Replacementcostdwellingind as an important feature in XGB classification
+- OrdinanceOrLawpct and SafeguardPlusind
+- Equipmentbreakdown and OrdinanceOrLawpct
+- Replacementvalueind and ordinanceorlawpct (GoodmanKruskal)
+
+
+
+
+```{r,fig.width=10, fig.height=10}
+v_set<- c(
+'propertymanager',
+'rentersinsurance',
+'ordinanceorlawpct',
+'landlordind',
+'customer_cnt_active_policies_binned',
+'safeguardplusind',
+'replacementcostdwellingind',
+'homegardcreditind',
+'equipmentbreakdown',
+'replacementvalueind'
+)
+plot_correlation(v_set)
+```
+
+##Misc discounts
+
+Strong (or higher then usual) correlation between:
+
+- firealarmtype and burglaryalarmtype. is this one device?
+- kitchenfireextinguisherind and deadboltind (what's this?)
+
+Equipmentbreakdown is one of the important features in XGB Classification. Probably because of the correlation (0.03 in GoodmanKruskal is significant) with firealarmtype (which is not explainable by itself) and serviceline
+
+
+
+
+
+```{r,fig.width=8, fig.height=8}
+v_set<- c(
+'waterdetectiondevice',
+'sprinklersystem',
+'firealarmtype',
+'burglaryalarmtype',
+'kitchenfireextinguisherind',
+'deadboltind',
+'serviceline',
+'gatedcommunityind',
+'poolind',
+'equipmentbreakdown',
+'replacementvalueind'
+)
+plot_correlation(v_set)
+```
+
+
+
+##Water Risk Scores
+
+Strong correlation between: water_risk_3_blk and water_risk_fre_3_blk
+
+
+Negative correlation between: water_risk_fre_3_blk and water_risk_sev_3_blk
+
+
+
+
+
+```{r,fig.width=8, fig.height=8}
+v_set<- c(
+'water_risk_3_blk',
+'water_risk_fre_3_blk',
+'water_risk_sev_3_blk',
+'appl_fail_3_blk',
+'fixture_leak_3_blk',
+'pipe_froze_3_blk',
+'plumb_leak_3_blk',
+'rep_cost_3_blk',
+'ustructure_fail_3_blk',
+'waterh_fail_3_blk'
+)
+plot_correlation(v_set)
+```
+
+Replacementvalueind is one of the important features in XGB classification but there is no explanation or strong correlation with any other attribute. There is GoodmanKruskal  correlation with very strong predictor usagetype and ordinanceorloawpct (it's strong because of the correlation with landordind). 
